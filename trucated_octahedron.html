@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Truncated Octahedron - Space Station</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            text-align: center;
+            color: rgba(255,255,255,0.8);
+            font-size: 18px;
+            letter-spacing: 3px;
+            pointer-events: none;
+            text-shadow: 0 0 25px rgba(0,170,255,0.5);
+            z-index: 10;
+        }
+        #info .title { font-size: 22px; font-weight: 300; margin-bottom: 4px; }
+        #info .hex { color: #66ddff; }
+        #info .sq  { color: #ffaa33; }
+        #info .dim { opacity: 0.4; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <div class="title">◈ TRUNCATED OCTAHEDRON ◈</div>
+        <span class="hex">⬡ 8 Altıgen</span>
+        <span class="dim"> + </span>
+        <span class="sq">▢ 6 Kare</span>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+    (() => {
+        /* ============ SCENE ============ */
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 2000);
+        camera.position.set(0, 0, 14);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(innerWidth, innerHeight);
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+        renderer.setClearColor(0x000000);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1;
+        document.body.appendChild(renderer.domElement);
+
+        /* ============ SPACE BACKGROUND ============ */
+        // Stars
+        function createStars() {
+            const group = new THREE.Group();
+
+            // Layer 1: distant small stars
+            const starCount1 = 4000;
+            const sGeo1 = new THREE.BufferGeometry();
+            const sPos1 = new Float32Array(starCount1 * 3);
+            const sCol1 = new Float32Array(starCount1 * 3);
+            const sSiz1 = new Float32Array(starCount1);
+            for (let i = 0; i < starCount1; i++) {
+                const r = 200 + Math.random() * 600;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                sPos1[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+                sPos1[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+                sPos1[i*3+2] = r * Math.cos(phi);
+                const c = new THREE.Color();
+                c.setHSL(0.55 + Math.random() * 0.15, 0.3 + Math.random() * 0.4, 0.7 + Math.random() * 0.3);
+                sCol1[i*3] = c.r; sCol1[i*3+1] = c.g; sCol1[i*3+2] = c.b;
+                sSiz1[i] = 0.5 + Math.random() * 1.5;
+            }
+            sGeo1.setAttribute('position', new THREE.Float32BufferAttribute(sPos1, 3));
+            sGeo1.setAttribute('color', new THREE.Float32BufferAttribute(sCol1, 3));
+            sGeo1.setAttribute('size', new THREE.Float32BufferAttribute(sSiz1, 1));
+
+            const sMat1 = new THREE.PointsMaterial({
+                size: 1.2,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.9,
+                sizeAttenuation: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            group.add(new THREE.Points(sGeo1, sMat1));
+
+            // Layer 2: brighter stars
+            const starCount2 = 600;
+            const sGeo2 = new THREE.BufferGeometry();
+            const sPos2 = new Float32Array(starCount2 * 3);
+            const sCol2 = new Float32Array(starCount2 * 3);
+            for (let i = 0; i < starCount2; i++) {
+                const r = 150 + Math.random() * 400;
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                sPos2[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+                sPos2[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+                sPos2[i*3+2] = r * Math.cos(phi);
+                const c = new THREE.Color();
+                c.setHSL(Math.random() < 0.3 ? 0.08 : (0.55 + Math.random()*0.2), 0.5, 0.85 + Math.random()*0.15);
+                sCol2[i*3] = c.r; sCol2[i*3+1] = c.g; sCol2[i*3+2] = c.b;
+            }
+            sGeo2.setAttribute('position', new THREE.Float32BufferAttribute(sPos2, 3));
+            sGeo2.setAttribute('color', new THREE.Float32BufferAttribute(sCol2, 3));
+
+            const sMat2 = new THREE.PointsMaterial({
+                size: 2.5,
+                vertexColors: true,
+                transparent: true,
+                opacity: 1,
+                sizeAttenuation: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            group.add(new THREE.Points(sGeo2, sMat2));
+
+            return group;
+        }
+        const stars = createStars();
+        scene.add(stars);
+
+        // Nebula clouds
+        function createNebula() {
+            const group = new THREE.Group();
+            const nebulaColors = [0x1a0533, 0x0a1a44, 0x0d2233, 0x220a33, 0x0a2a3a];
+
+            for (let i = 0; i < 18; i++) {
+                const geo = new THREE.PlaneGeometry(80 + Math.random() * 160, 80 + Math.random() * 160);
+                const c = nebulaColors[Math.floor(Math.random() * nebulaColors.length)];
+                const mat = new THREE.MeshBasicMaterial({
+                    color: c,
+                    transparent: true,
+                    opacity: 0.04 + Math.random() * 0.06,
+                    side: THREE.DoubleSide,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+                const m = new THREE.Mesh(geo, mat);
+                m.position.set(
+                    (Math.random()-0.5)*300,
+                    (Math.random()-0.5)*300,
+                    -200 - Math.random()*200
+                );
+                m.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+                group.add(m);
+            }
+            return group;
+        }
+        scene.add(createNebula());
+
+        /* ============ LIGHTING ============ */
+        scene.add(new THREE.AmbientLight(0x334455, 0.5));
+
+        const dl1 = new THREE.DirectionalLight(0xffeedd, 0.8);
+        dl1.position.set(8, 10, 8);
+        scene.add(dl1);
+
+        const dl2 = new THREE.DirectionalLight(0x3366aa, 0.35);
+        dl2.position.set(-8, -4, -6);
+        scene.add(dl2);
+
+        const dl3 = new THREE.DirectionalLight(0xff6633, 0.2);
+        dl3.position.set(0, -8, 5);
+        scene.add(dl3);
+
+        // Sun-like distant light glow
+        const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+            color: 0xffddaa,
+            transparent: true,
+            opacity: 0.3,
+            blending: THREE.AdditiveBlending
+        }));
+        sunGlow.scale.set(40, 40, 1);
+        sunGlow.position.set(60, 40, -100);
+        scene.add(sunGlow);
+
+        /* ============ ISS-LIKE TEXTURE (procedural) ============ */
+        function createISSTexture(isHex, idx) {
+            const size = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Base metallic gray
+            const baseR = 140 + Math.floor(Math.random()*30);
+            const baseG = 148 + Math.floor(Math.random()*25);
+            const baseB = 155 + Math.floor(Math.random()*25);
+            ctx.fillStyle = `rgb(${baseR},${baseG},${baseB})`;
+            ctx.fillRect(0, 0, size, size);
+
+            // Subtle noise
+            for (let y = 0; y < size; y += 2) {
+                for (let x = 0; x < size; x += 2) {
+                    const n = Math.random() * 15 - 7;
+                    ctx.fillStyle = `rgba(${128+n},${128+n},${128+n},0.15)`;
+                    ctx.fillRect(x, y, 2, 2);
+                }
+            }
+
+            // Panel lines - grid
+            ctx.strokeStyle = 'rgba(60,65,70,0.6)';
+            ctx.lineWidth = 1.5;
+            const panelSize = 40 + Math.floor(Math.random() * 30);
+            for (let x = 0; x < size; x += panelSize) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, size); ctx.stroke();
+            }
+            for (let y = 0; y < size; y += panelSize) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(size, y); ctx.stroke();
+            }
+
+            // Rivets
+            ctx.fillStyle = 'rgba(90,95,100,0.7)';
+            for (let x = panelSize; x < size; x += panelSize) {
+                for (let y = panelSize; y < size; y += panelSize) {
+                    ctx.beginPath();
+                    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // Some colored accent strips (ISS-like)
+            if (isHex) {
+                // Gold/bronze thermal strips
+                const stripY = 60 + Math.floor(Math.random() * 300);
+                const grad = ctx.createLinearGradient(0, stripY, 0, stripY + 25);
+                grad.addColorStop(0, 'rgba(180,160,80,0.25)');
+                grad.addColorStop(0.5, 'rgba(200,180,100,0.35)');
+                grad.addColorStop(1, 'rgba(180,160,80,0.25)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, stripY, size, 25);
+            } else {
+                // Blue panel sections for squares
+                const sx = Math.floor(Math.random() * 300);
+                ctx.fillStyle = 'rgba(40,80,120,0.2)';
+                ctx.fillRect(sx, 100, 120, 120);
+                ctx.strokeStyle = 'rgba(60,100,150,0.4)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i < 6; i++) {
+                    ctx.strokeRect(sx + 5 + i*19, 105, 16, 110);
+                }
+            }
+
+            // Random tech details
+            for (let i = 0; i < 3 + Math.floor(Math.random()*4); i++) {
+                const rx = Math.random() * (size-60);
+                const ry = Math.random() * (size-30);
+                ctx.fillStyle = `rgba(${70+Math.random()*40},${75+Math.random()*40},${80+Math.random()*40},0.4)`;
+                ctx.fillRect(rx, ry, 20+Math.random()*40, 8+Math.random()*20);
+            }
+
+            // Small warning/marking labels
+            if (Math.random() > 0.5) {
+                ctx.fillStyle = 'rgba(200,180,50,0.35)';
+                const lx = 50 + Math.random() * 300;
+                const ly = 200 + Math.random() * 200;
+                ctx.fillRect(lx, ly, 60, 20);
+                ctx.fillStyle = 'rgba(40,40,40,0.6)';
+                ctx.font = '10px monospace';
+                ctx.fillText('ISS-' + Math.floor(Math.random()*999), lx+5, ly+14);
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        /* ============ TRUNCATED OCTAHEDRON DATA ============ */
+        const hexData = [
+            [[0,1,2],[1,0,2],[2,0,1],[2,1,0],[1,2,0],[0,2,1]],
+            [[0,1,-2],[0,2,-1],[1,2,0],[2,1,0],[2,0,-1],[1,0,-2]],
+            [[0,-1,2],[0,-2,1],[1,-2,0],[2,-1,0],[2,0,1],[1,0,2]],
+            [[0,-1,-2],[1,0,-2],[2,0,-1],[2,-1,0],[1,-2,0],[0,-2,-1]],
+            [[0,1,2],[0,2,1],[-1,2,0],[-2,1,0],[-2,0,1],[-1,0,2]],
+            [[0,1,-2],[-1,0,-2],[-2,0,-1],[-2,1,0],[-1,2,0],[0,2,-1]],
+            [[0,-1,2],[-1,0,2],[-2,0,1],[-2,-1,0],[-1,-2,0],[0,-2,1]],
+            [[0,-1,-2],[0,-2,-1],[-1,-2,0],[-2,-1,0],[-2,0,-1],[-1,0,-2]]
+        ];
+
+        const sqData = [
+            [[2,0,1],[2,1,0],[2,0,-1],[2,-1,0]],
+            [[-2,0,1],[-2,-1,0],[-2,0,-1],[-2,1,0]],
+            [[0,2,1],[1,2,0],[0,2,-1],[-1,2,0]],
+            [[0,-2,1],[-1,-2,0],[0,-2,-1],[1,-2,0]],
+            [[0,1,2],[-1,0,2],[0,-1,2],[1,0,2]],
+            [[0,1,-2],[1,0,-2],[0,-1,-2],[-1,0,-2]]
+        ];
+
+        /* ============ HELPERS ============ */
+        function centroid(vs) {
+            const c = [0,0,0];
+            vs.forEach(v => { c[0]+=v[0]; c[1]+=v[1]; c[2]+=v[2]; });
+            return c.map(x => x/vs.length);
+        }
+
+        function outwardNormal(vs) {
+            const c = centroid(vs);
+            const a = [vs[1][0]-vs[0][0], vs[1][1]-vs[0][1], vs[1][2]-vs[0][2]];
+            const b = [vs[2][0]-vs[0][0], vs[2][1]-vs[0][1], vs[2][2]-vs[0][2]];
+            let n = [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+            const len = Math.hypot(...n); n = n.map(x=>x/len);
+            if (c[0]*n[0]+c[1]*n[1]+c[2]*n[2] < 0) n = n.map(x=>-x);
+            return n;
+        }
+
+        function easeInOutCubic(t) {
+            t = Math.max(0, Math.min(1, t));
+            return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+        }
+
+        // Slow-in at end of assembly
+        function easeAssemble(t) {
+            t = Math.max(0, Math.min(1, t));
+            // Starts normal, slows down heavily at end
+            return 1 - Math.pow(1-t, 4);
+        }
+
+        /* ============ DUST TRAIL SYSTEM ============ */
+        const MAX_DUST = 3000;
+        const dustPositions = new Float32Array(MAX_DUST * 3);
+        const dustAlphas = new Float32Array(MAX_DUST);
+        const dustSizes = new Float32Array(MAX_DUST);
+        const dustVelocities = [];
+        let dustIndex = 0;
+
+        for (let i = 0; i < MAX_DUST; i++) {
+            dustPositions[i*3] = 0;
+            dustPositions[i*3+1] = 0;
+            dustPositions[i*3+2] = 0;
+            dustAlphas[i] = 0;
+            dustSizes[i] = 0;
+            dustVelocities.push(new THREE.Vector3());
+        }
+
+        const dustGeo = new THREE.BufferGeometry();
+        dustGeo.setAttribute('position', new THREE.Float32BufferAttribute(dustPositions, 3));
+        dustGeo.setAttribute('alpha', new THREE.Float32BufferAttribute(dustAlphas, 1));
+
+        // Custom shader for dust with per-particle alpha
+        const dustMat = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.08,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            sizeAttenuation: true
+        });
+
+        const dustPoints = new THREE.Points(dustGeo, dustMat);
+        scene.add(dustPoints);
+
+        function emitDust(worldPos, vel) {
+            const i = dustIndex % MAX_DUST;
+            dustPositions[i*3]   = worldPos.x + (Math.random()-0.5)*0.15;
+            dustPositions[i*3+1] = worldPos.y + (Math.random()-0.5)*0.15;
+            dustPositions[i*3+2] = worldPos.z + (Math.random()-0.5)*0.15;
+            dustAlphas[i] = 0.7 + Math.random()*0.3;
+            dustSizes[i] = 0.03 + Math.random()*0.06;
+            dustVelocities[i].set(
+                vel.x * 0.02 + (Math.random()-0.5)*0.01,
+                vel.y * 0.02 + (Math.random()-0.5)*0.01,
+                vel.z * 0.02 + (Math.random()-0.5)*0.01
+            );
+            dustIndex++;
+        }
+
+        function updateDust(dt) {
+            for (let i = 0; i < MAX_DUST; i++) {
+                if (dustAlphas[i] > 0) {
+                    dustAlphas[i] -= dt * 0.4;
+                    if (dustAlphas[i] < 0) dustAlphas[i] = 0;
+                    dustPositions[i*3]   += dustVelocities[i].x;
+                    dustPositions[i*3+1] += dustVelocities[i].y;
+                    dustPositions[i*3+2] += dustVelocities[i].z;
+                    dustVelocities[i].multiplyScalar(0.98);
+                }
+            }
+            dustGeo.attributes.position.needsUpdate = true;
+            // Adjust overall opacity based on average
+            let totalAlpha = 0;
+            for (let i = 0; i < MAX_DUST; i++) totalAlpha += dustAlphas[i];
+            dustMat.opacity = Math.min(0.7, totalAlpha / MAX_DUST * 8);
+        }
+
+        /* ============ BUILD FACES ============ */
+        const mainGroup = new THREE.Group();
+        scene.add(mainGroup);
+        const faces = [];
+
+        function buildFace(verts, isHex, idx) {
+            const c = centroid(verts);
+            const n = outwardNormal(verts);
+            const grp = new THREE.Group();
+            const lv = verts.map(v => [v[0]-c[0], v[1]-c[1], v[2]-c[2]]);
+
+            const triPos = [];
+            const triUV = [];
+            // Compute UV mapping
+            const right = [lv[1][0]-lv[0][0], lv[1][1]-lv[0][1], lv[1][2]-lv[0][2]];
+            const rLen = Math.hypot(...right);
+            const rn = right.map(x=>x/rLen);
+            const up = [
+                n[1]*rn[2]-n[2]*rn[1],
+                n[2]*rn[0]-n[0]*rn[2],
+                n[0]*rn[1]-n[1]*rn[0]
+            ];
+
+            function toUV(v) {
+                const u = v[0]*rn[0]+v[1]*rn[1]+v[2]*rn[2];
+                const vv = v[0]*up[0]+v[1]*up[1]+v[2]*up[2];
+                return [(u+3)/6, (vv+3)/6];
+            }
+
+            for (let i = 1; i < lv.length - 1; i++) {
+                triPos.push(...lv[0], ...lv[i], ...lv[i+1]);
+                triUV.push(...toUV(lv[0]), ...toUV(lv[i]), ...toUV(lv[i+1]));
+            }
+
+            const fGeo = new THREE.BufferGeometry();
+            fGeo.setAttribute('position', new THREE.Float32BufferAttribute(triPos, 3));
+            fGeo.setAttribute('uv', new THREE.Float32BufferAttribute(triUV, 2));
+            fGeo.computeVertexNormals();
+
+            const texture = createISSTexture(isHex, idx);
+            const baseColor = isHex ? 0x8899aa : 0x7a8590;
+
+            const fMat = new THREE.MeshStandardMaterial({
+                map: texture,
+                color: baseColor,
+                metalness: 0.7,
+                roughness: 0.35,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.95,
+            });
+            grp.add(new THREE.Mesh(fGeo, fMat));
+
+            // Edge outline
+            const ePos = [];
+            for (let i = 0; i < lv.length; i++) {
+                const j = (i+1)%lv.length;
+                ePos.push(...lv[i], ...lv[j]);
+            }
+            const eGeo = new THREE.BufferGeometry();
+            eGeo.setAttribute('position', new THREE.Float32BufferAttribute(ePos, 3));
+            const eMat = new THREE.LineBasicMaterial({
+                color: 0xaabbcc,
+                transparent: true,
+                opacity: 0.7
+            });
+            grp.add(new THREE.LineSegments(eGeo, eMat));
+
+            // Thin bright inner edge
+            const eMat2 = new THREE.LineBasicMaterial({
+                color: 0x66aadd,
+                transparent: true,
+                opacity: 0.3,
+                blending: THREE.AdditiveBlending
+            });
+            grp.add(new THREE.LineSegments(eGeo.clone(), eMat2));
+
+            grp.position.set(c[0], c[1], c[2]);
+            mainGroup.add(grp);
+
+            // Red lights on some faces
+            const redLights = [];
+            const hasRedLight = Math.random() > 0.45; // ~55% chance
+            if (hasRedLight) {
+                const numLights = 1 + Math.floor(Math.random() * 3);
+                for (let li = 0; li < numLights; li++) {
+                    // Random position on face surface
+                    const ri = Math.floor(Math.random() * lv.length);
+                    const rj = (ri + 1) % lv.length;
+                    const t1 = 0.2 + Math.random() * 0.6;
+                    const t2 = 0.1 + Math.random() * 0.3;
+                    const lp = [
+                        lv[0][0]*(1-t1-t2) + lv[ri][0]*t1 + lv[rj][0]*t2,
+                        lv[0][1]*(1-t1-t2) + lv[ri][1]*t1 + lv[rj][1]*t2,
+                        lv[0][2]*(1-t1-t2) + lv[ri][2]*t1 + lv[rj][2]*t2
+                    ];
+                    // Offset slightly above face
+                    const off = 0.04;
+                    lp[0] += n[0]*off; lp[1] += n[1]*off; lp[2] += n[2]*off;
+
+                    // Red light sphere
+                    const rlGeo = new THREE.SphereGeometry(0.04, 8, 8);
+                    const rlMat = new THREE.MeshBasicMaterial({
+                        color: 0xff0000,
+                        transparent: true,
+                        opacity: 1
+                    });
+                    const rlMesh = new THREE.Mesh(rlGeo, rlMat);
+                    rlMesh.position.set(...lp);
+                    grp.add(rlMesh);
+
+                    // Red glow sprite
+                    const rlSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                        color: 0xff2200,
+                        transparent: true,
+                        opacity: 0.5,
+                        blending: THREE.AdditiveBlending
+                    }));
+                    rlSprite.scale.set(0.25, 0.25, 1);
+                    rlSprite.position.set(...lp);
+                    grp.add(rlSprite);
+
+                    redLights.push({ mesh: rlMesh, sprite: rlSprite, phase: Math.random() * Math.PI * 2 });
+                }
+            }
+
+            return {
+                group: grp,
+                centroid: new THREE.Vector3(...c),
+                normal: new THREE.Vector3(...n),
+                faceMat: fMat,
+                edgeMat: eMat,
+                redLights,
+                prevPos: new THREE.Vector3(...c),
+                randAxis: new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize(),
+                randAngle: (Math.random()-0.5) * Math.PI * 3,
+                isHex
+            };
+        }
+
+        hexData.forEach((h,i) => faces.push(buildFace(h, true, i)));
+        sqData.forEach((s,i) => faces.push(buildFace(s, false, i)));
+
+        // Inner glow
+        const innerGlow = new THREE.PointLight(0x4488cc, 0, 6);
+        mainGroup.add(innerGlow);
+
+        /* ============ MOUSE ============ */
+        let mx=0, my=0, smx=0, smy=0;
+        document.addEventListener('mousemove', e => {
+            mx = (e.clientX/innerWidth-0.5)*2;
+            my = (e.clientY/innerHeight-0.5)*2;
+        });
+        document.addEventListener('touchmove', e => {
+            if(e.touches.length){
+                mx=(e.touches[0].clientX/innerWidth-0.5)*2;
+                my=(e.touches[0].clientY/innerHeight-0.5)*2;
+            }
+        },{passive:true});
+
+        /* ============ ANIMATION ============ */
+        let lastTime = performance.now() / 1000;
+        const worldPos = new THREE.Vector3();
+        const prevWorldPos = new THREE.Vector3();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const now = performance.now() / 1000;
+            const dt = Math.min(now - lastTime, 0.05);
+            lastTime = now;
+            const t = now;
+
+            /* --- Explode factor --- */
+            const cycle = 12;
+            const p = (t % cycle) / cycle;
+            let explode;
+
+            if (p < 0.04)       explode = 1;
+            else if (p < 0.38)  explode = 1 - easeAssemble((p-0.04)/0.34);   // assembly with slowdown at end
+            else if (p < 0.60)  explode = 0;                                   // hold
+            else if (p < 0.88)  explode = easeInOutCubic((p-0.60)/0.28);       // explode
+            else                explode = 1;
+
+            const spread = 1 + explode * 2.8;
+            const isMoving = (p > 0.04 && p < 0.38) || (p > 0.60 && p < 0.88);
+
+            /* --- Update faces --- */
+            for (const f of faces) {
+                const newPos = f.centroid.clone().multiplyScalar(spread);
+
+                // Get previous world position for dust trail
+                f.prevPos.copy(f.group.position);
+
+                f.group.position.copy(newPos);
+                f.group.quaternion.setFromAxisAngle(f.randAxis, f.randAngle * explode);
+
+                f.faceMat.opacity = 0.95 - explode * 0.1;
+                f.edgeMat.opacity = 0.7 - explode * 0.1;
+
+                // Red light blinking
+                for (const rl of f.redLights) {
+                    const blink = 0.5 + 0.5 * Math.sin(t * (2 + Math.sin(rl.phase)) + rl.phase);
+                    rl.mesh.material.opacity = 0.5 + blink * 0.5;
+                    rl.sprite.material.opacity = 0.2 + blink * 0.5;
+                    rl.sprite.scale.setScalar(0.15 + blink * 0.15);
+                }
+
+                // Emit dust while moving
+                if (isMoving && Math.random() > 0.5) {
+                    // Transform to world
+                    worldPos.copy(newPos);
+                    mainGroup.localToWorld(worldPos);
+                    prevWorldPos.copy(f.prevPos);
+                    mainGroup.localToWorld(prevWorldPos);
+                    const vel = worldPos.clone().sub(prevWorldPos);
+                    emitDust(worldPos, vel);
+                }
+            }
+
+            innerGlow.intensity = (1 - explode) * 0.5;
+
+            // Breathing
+            const breath = 1 + (1 - explode) * Math.sin(t * 2) * 0.01;
+            mainGroup.scale.setScalar(breath);
+
+            // Rotation
+            smx += (mx-smx)*0.03;
+            smy += (my-smy)*0.03;
+            mainGroup.rotation.y = t * 0.18 + smx * 0.5;
+            mainGroup.rotation.x = Math.sin(t*0.11)*0.15 + smy * 0.35;
+            mainGroup.rotation.z = Math.sin(t*0.07)*0.04;
+
+            // Stars subtle rotation
+            stars.rotation.y = t * 0.003;
+            stars.rotation.x = t * 0.001;
+
+            // Update dust
+            updateDust(dt);
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        /* ============ RESIZE ============ */
+        addEventListener('resize', () => {
+            camera.aspect = innerWidth/innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PETEK - Truncated Octahedron Kenetlenme Animasyonu</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#0f8}
+canvas{display:block}
+
+#hud{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+
+.panel{
+  background:rgba(0,15,30,.85);
+  border:1px solid rgba(0,255,136,.25);
+  border-radius:8px;padding:12px 16px;
+  backdrop-filter:blur(6px)
+}
+
+/* ── Başlık ── */
+#title{
+  position:absolute;top:12px;left:50%;transform:translateX(-50%);
+  text-align:center;letter-spacing:2px
+}
+#title h1{font-size:20px;margin-bottom:3px}
+#title .sub{font-size:11px;color:#556}
+
+/* ── Faz Göstergesi ── */
+#phase-box{
+  position:absolute;top:75px;left:50%;transform:translateX(-50%);
+  min-width:420px;text-align:center
+}
+#phase-name{font-size:20px;font-weight:700;color:#fa0}
+#phase-desc{font-size:12px;color:#778;margin-top:4px}
+#bar-bg{width:100%;height:3px;background:rgba(255,255,255,.08);border-radius:2px;margin-top:8px}
+#bar-fill{height:100%;width:0;background:linear-gradient(90deg,#0f8,#fa0);border-radius:2px;transition:width .15s}
+
+/* ── Telemetri ── */
+#telem{position:absolute;bottom:60px;left:16px;font-size:13px;line-height:2}
+.lbl{color:#445}.val{color:#0f8}.warn{color:#f44}
+
+/* ── Adımlar ── */
+#steps{position:absolute;right:16px;top:75px;font-size:12px;line-height:2.4}
+.stp{color:#333;transition:color .4s}
+.stp.on{color:#fa0}
+.stp.ok{color:#0f8}
+
+/* ── Modül Bilgisi ── */
+#minfo{position:absolute;bottom:60px;right:16px;font-size:12px;line-height:2;text-align:right}
+
+/* ── Kontroller ── */
+#ctrl{
+  position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  display:flex;gap:10px;pointer-events:all
+}
+#ctrl button{
+  background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.35);
+  color:#0f8;padding:7px 18px;font-family:inherit;font-size:13px;
+  cursor:pointer;border-radius:4px;transition:background .2s
+}
+#ctrl button:hover{background:rgba(0,255,136,.25)}
+
+/* ── Crosshair ── */
+.cross{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:50px;height:50px;opacity:.2}
+.cross::before,.cross::after{content:'';position:absolute;background:#0f8}
+.cross::before{top:50%;left:0;right:0;height:1px}
+.cross::after{left:50%;top:0;bottom:0;width:1px}
+</style>
+</head>
+<body>
+
+<!-- ════════════ HUD ════════════ -->
+<div id="hud">
+
+  <div id="title" class="panel">
+    <h1>🛰️ PETEK KENETLENME SİSTEMİ</h1>
+    <div class="sub">Truncated Octahedron · 3-Aşamalı Otonom Montaj</div>
+  </div>
+
+  <div id="phase-box" class="panel">
+    <div id="phase-name">BAŞLATILIYOR…</div>
+    <div id="phase-desc"></div>
+    <div id="bar-bg"><div id="bar-fill"></div></div>
+  </div>
+
+  <div id="telem" class="panel">
+    <div><span class="lbl">MESAFE : </span><span class="val" id="vDist">—</span></div>
+    <div><span class="lbl">HIZ    : </span><span class="val" id="vSpd">—</span></div>
+    <div><span class="lbl">HIZA   : </span><span class="val" id="vAlgn">—</span></div>
+    <div><span class="lbl">EM ALAN: </span><span class="val" id="vEm">—</span></div>
+    <div><span class="lbl">KİLİT  : </span><span class="val" id="vLock">—</span></div>
+    <div><span class="lbl">BASINÇ : </span><span class="val" id="vPrs">—</span></div>
+  </div>
+
+  <div id="steps" class="panel">
+    <div class="stp" data-i="0">○ Uzak Yaklaşma</div>
+    <div class="stp" data-i="1">○ Yakın Yaklaşma</div>
+    <div class="stp" data-i="2">○ Final Yaklaşma</div>
+    <div class="stp" data-i="3">○ EM Yakalama</div>
+    <div class="stp" data-i="4">○ Mekanik Kilit</div>
+    <div class="stp" data-i="5">○ Sızdırmazlık</div>
+    <div class="stp" data-i="6">○ Entegrasyon ✓</div>
+  </div>
+
+  <div id="minfo" class="panel">
+    <div style="color:#48f">■ MODÜL-A · COM (Çekirdek)</div>
+    <div style="color:#f84">■ MODÜL-B · HAB (Yaşam)</div>
+  </div>
+
+  <div class="cross"></div>
+
+  <div id="ctrl">
+    <button onclick="restart()">⟳ YENİDEN</button>
+    <button id="btnPause" onclick="togglePause()">⏸ DURAKLAT</button>
+    <button id="btnSpd" onclick="changeSpeed()">⏩ HIZ</button>
+  </div>
+</div>
+
+<!-- ════════════ THREE.JS ════════════ -->
+<script type="importmap">
+{
+  "imports":{
+    "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import*as THREE from'three';
+import{ConvexGeometry}from'three/addons/geometries/ConvexGeometry.js';
+import{OrbitControls}from'three/addons/controls/OrbitControls.js';
+
+/* ──────────────── SAHNE ──────────────── */
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.1,2000);
+const R=new THREE.WebGLRenderer({antialias:true});
+R.setSize(innerWidth,innerHeight);R.setPixelRatio(devicePixelRatio);
+R.toneMapping=THREE.ACESFilmicToneMapping;
+document.body.insertBefore(R.domElement,document.getElementById('hud'));
+
+const ctrl=new OrbitControls(cam,R.domElement);
+ctrl.enableDamping=true;ctrl.dampingFactor=.05;
+ctrl.minDistance=3;ctrl.maxDistance=50;
+
+/* ──────────────── IŞIK ──────────────── */
+scene.add(new THREE.AmbientLight(0x334455,.5));
+const sun=new THREE.DirectionalLight(0xffffff,2);sun.position.set(10,5,10);scene.add(sun);
+const fill=new THREE.DirectionalLight(0x4488ff,.3);fill.position.set(-5,-3,-5);scene.add(fill);
+
+/* ──────────────── YILDIZLAR ──────────────── */
+{
+  const N=3000,pos=new Float32Array(N*3);
+  for(let i=0;i<N;i++){
+    const r=400+Math.random()*600,
+          th=Math.random()*Math.PI*2,
+          ph=Math.acos(2*Math.random()-1);
+    pos[i*3]=r*Math.sin(ph)*Math.cos(th);
+    pos[i*3+1]=r*Math.sin(ph)*Math.sin(th);
+    pos[i*3+2]=r*Math.cos(ph);
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:1.2,sizeAttenuation:true})));
+}
+
+/* ──────── Dünya parlaması (alt) ──────── */
+{
+  const eg=new THREE.SphereGeometry(120,32,32);
+  const em=new THREE.MeshBasicMaterial({color:0x1155aa,transparent:true,opacity:.06,side:THREE.BackSide});
+  const earth=new THREE.Mesh(eg,em);earth.position.y=-125;scene.add(earth);
+}
+
+/* ══════════ TRUNCATED OCTAHEDRON ══════════ */
+function toVerts(s=1){
+  // 24 köşe: (0,±1,±2)'nin tüm permütasyonları
+  const v=[];
+  const base=[
+    [0,1,2],[0,1,-2],[0,-1,2],[0,-1,-2],
+    [0,2,1],[0,2,-1],[0,-2,1],[0,-2,-1],
+    [1,0,2],[1,0,-2],[-1,0,2],[-1,0,-2],
+    [2,0,1],[2,0,-1],[-2,0,1],[-2,0,-1],
+    [1,2,0],[1,-2,0],[-1,2,0],[-1,-2,0],
+    [2,1,0],[2,-1,0],[-2,1,0],[-2,-1,0]
+  ];
+  for(const c of base) v.push(new THREE.Vector3(c[0]*s,c[1]*s,c[2]*s));
+  return v;
+}
+
+function makeModule(color,emColor,portDir=1){
+  /*  portDir: +1 → +X yüzde port,  -1 → −X yüzde port  */
+  const grp=new THREE.Group();
+  const verts=toVerts(1);
+  const geo=new ConvexGeometry(verts);
+
+  const mat=new THREE.MeshPhysicalMaterial({
+    color,emissive:emColor,emissiveIntensity:.12,
+    metalness:.7,roughness:.3,transparent:true,opacity:.55,side:THREE.DoubleSide
+  });
+  const body=new THREE.Mesh(geo,mat);grp.add(body);
+
+  const edge=new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo,15),
+    new THREE.LineBasicMaterial({color,transparent:true,opacity:.75})
+  );
+  grp.add(edge);
+
+  // Kenetlenme portu (altıgen halka)
+  const portG=new THREE.RingGeometry(.3,.45,6);
+  const portM=new THREE.MeshBasicMaterial({color:0x00ff88,side:THREE.DoubleSide,transparent:true,opacity:.8});
+  const port=new THREE.Mesh(portG,portM);
+  port.position.set(2.08*portDir,0,0);
+  port.rotation.y=portDir>0?Math.PI/2:-Math.PI/2;
+  grp.add(port);
+
+  // Port ışıması
+  const glowG=new THREE.RingGeometry(.46,.58,6);
+  const glowM=new THREE.MeshBasicMaterial({color:0x00ff88,side:THREE.DoubleSide,transparent:true,opacity:.25});
+  const glow=new THREE.Mesh(glowG,glowM);
+  glow.position.copy(port.position);glow.rotation.copy(port.rotation);
+  grp.add(glow);
+
+  // Her kare yüzde küçük güneş paneli rayı (görsel ayrıntı)
+  const railM=new THREE.MeshBasicMaterial({color:0x002244,side:THREE.DoubleSide,transparent:true,opacity:.5});
+  for(const axis of[[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]){
+    const rg=new THREE.PlaneGeometry(.6,2);
+    const rail=new THREE.Mesh(rg,railM);
+    rail.position.set(axis[0]*2.8,axis[1]*2.8,axis[2]*2.8);
+    if(axis[1])rail.rotation.x=Math.PI/2;
+    if(axis[2])rail.rotation.y=Math.PI/2;
+    // sadece bazı yüzlere koy
+    if(Math.abs(axis[1])){
+      const pg=new THREE.PlaneGeometry(1.8,3.5);
+      const pm=new THREE.MeshPhysicalMaterial({color:0x0a1a3a,metalness:.6,roughness:.3,side:THREE.DoubleSide});
+      const panel=new THREE.Mesh(pg,pm);
+      panel.position.set(axis[0]*4,axis[1]*4,axis[2]*4);
+      panel.rotation.x=Math.PI/2;
+      grp.add(panel);
+    }
+  }
+
+  grp.userData={body,mat,port,glow,glowM,edge};
+  return grp;
+}
+
+// İki modül
+const mA=makeModule(0x4488ff,0x002244, 1);   // COM – port +X
+const mB=makeModule(0xff8844,0x442200,-1);   // HAB – port −X
+mA.position.set(-2,0,0);
+mB.position.set(16,0,0);
+scene.add(mA,mB);
+
+/* ──────── LIDAR IŞINLARI ──────── */
+const lidarGrp=new THREE.Group();scene.add(lidarGrp);
+const beams=[];
+for(let i=0;i<12;i++){
+  const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(1,0,0)]);
+  const m=new THREE.LineBasicMaterial({color:0xff2200,transparent:true,opacity:.5});
+  const b=new THREE.Line(g,m);beams.push(b);lidarGrp.add(b);
+}
+
+/* ──────── EM PARÇACIKLARI ──────── */
+const emN=300,emPos=new Float32Array(emN*3);
+const emGeo=new THREE.BufferGeometry();
+emGeo.setAttribute('position',new THREE.BufferAttribute(emPos,3));
+const emMat=new THREE.PointsMaterial({color:0x00ffff,size:.07,transparent:true,opacity:0,blending:THREE.AdditiveBlending});
+const emPts=new THREE.Points(emGeo,emMat);scene.add(emPts);
+
+/* ──────── BAYONET PİNLERİ ──────── */
+const pinGrp=new THREE.Group();scene.add(pinGrp);
+const pins=[];
+for(let i=0;i<8;i++){
+  const pg=new THREE.CylinderGeometry(.025,.025,.35,8);
+  const pm=new THREE.MeshStandardMaterial({color:0xbbbbbb,metalness:.9,roughness:.15});
+  const pin=new THREE.Mesh(pg,pm);pin.rotation.z=Math.PI/2;pin.visible=false;
+  pins.push(pin);pinGrp.add(pin);
+}
+
+/* ──────── SEAL HALKA ──────── */
+const sealGeo=new THREE.TorusGeometry(.44,.04,12,6);
+const sealMat=new THREE.MeshBasicMaterial({color:0xffaa00,transparent:true,opacity:0});
+const seal=new THREE.Mesh(sealGeo,sealMat);seal.rotation.y=Math.PI/2;scene.add(seal);
+
+/* ──────── TEMAS FLASH ──────── */
+const flashGeo=new THREE.SphereGeometry(.6,16,16);
+const flashMat=new THREE.MeshBasicMaterial({color:0x00ff88,transparent:true,opacity:0,blending:THREE.AdditiveBlending});
+const flash=new THREE.Mesh(flashGeo,flashMat);scene.add(flash);
+
+/* ══════════ ANİMASYON DURUMU ══════════ */
+let animT=0, paused=false, spd=1, curPhase=-1;
+const clock=new THREE.Clock();
+
+const PH=[
+  {n:"UZAK YAKLAŞMA",        d:"LIDAR tarama aktif · Hohmann transfer",               s:0,  e:8  },
+  {n:"YAKIN YAKLAŞMA",       d:"Stereo kamera · Model tracking · 6-DOF",               s:8,  e:15 },
+  {n:"FİNAL YAKLAŞMA",       d:"Hız 1 cm/s · Hassas hizalama ±2 mm",                  s:15, e:22 },
+  {n:"ELEKTROMANYETİK YAKALAMA",d:"Soft capture · EM kuvvet 2000 N · Eddy-current sönüm",s:22, e:28 },
+  {n:"MEKANİK KİLİTLEME",   d:"8× Bayonet pin · Insert & 45° dönüş · 400 kN",        s:28, e:33 },
+  {n:"SIZDIRMAZLIK & BASINÇ",d:"3× O-ring · He kaçak testi · 101.3 kPa",              s:33, e:38 },
+  {n:"✓ ENTEGRASYON TAMAM",  d:"Tüm alt-sistemler nominal · Geçiş kapısı açık",       s:38, e:45 }
+];
+
+cam.position.set(10,5,14);cam.lookAt(4,0,0);
+
+/* ──────── HUD GÜNCELLE ──────── */
+function hud(t){
+  const pi=PH.findIndex(p=>t>=p.s&&t<p.e);
+
+  // Loop sıfırlama
+  if(t<.5&&curPhase>0){
+    curPhase=-1;
+    document.querySelectorAll('.stp').forEach(el=>{
+      el.classList.remove('on','ok');
+      el.textContent=el.textContent.replace('●','○').replace('◉','○');
+    });
+  }
+
+  if(pi>=0&&pi!==curPhase){
+    curPhase=pi;
+    document.getElementById('phase-name').textContent=PH[pi].n;
+    document.getElementById('phase-desc').textContent=PH[pi].d;
+    document.querySelectorAll('.stp').forEach((el,i)=>{
+      if(i<pi){el.classList.remove('on');el.classList.add('ok');el.textContent=el.textContent.replace('○','●').replace('◉','●')}
+      else if(i===pi){el.classList.add('on');el.classList.remove('ok');el.textContent=el.textContent.replace('○','◉').replace('●','◉')}
+      else{el.classList.remove('on','ok')}
+    });
+  }
+
+  document.getElementById('bar-fill').style.width=(t/45*100)+'%';
+
+  // Mesafe
+  const gap=Math.max(0,mB.position.x-2-(mA.position.x+2));
+  document.getElementById('vDist').textContent=gap>0.01?gap.toFixed(2)+' m':'0.00 m (TEMAS)';
+
+  // Hız
+  const speeds=['2.00 m/s','0.50 m/s','0.01 m/s','0.005 m/s','0.001 m/s','0.00 m/s','0.00 m/s'];
+  document.getElementById('vSpd').textContent=pi>=0?speeds[pi]:'—';
+
+  // Hizalama
+  const aligns=['±15.0°','±2.5°','±0.1° ✓','±0.05° ✓','±0.02° ✓','±0.01° ✓','±0.01° ✓'];
+  document.getElementById('vAlgn').textContent=pi>=0?aligns[pi]:'—';
+
+  // EM
+  const vEm=document.getElementById('vEm');
+  if(pi>=3){vEm.textContent='AKTİF ████';vEm.style.color='#0ff'}
+  else if(pi>=2){vEm.textContent='HAZIR ░░░░';vEm.style.color='#666'}
+  else{vEm.textContent='KAPALI';vEm.style.color='#666'}
+
+  // Kilit
+  const vL=document.getElementById('vLock');
+  if(pi>=5){vL.textContent='KİLİTLİ ✓';vL.style.color='#0f8'}
+  else if(pi>=4){vL.textContent='KİLİTLENİYOR ▓▓░░';vL.style.color='#fa0'}
+  else{vL.textContent='AÇIK';vL.style.color='#666'}
+
+  // Basınç
+  const vP=document.getElementById('vPrs');
+  if(pi>=6){vP.textContent='101.3 kPa ✓';vP.style.color='#0f8'}
+  else if(pi>=5){vP.textContent='BASINÇLANIYOR '+((t-33)/5*101.3).toFixed(1)+' kPa';vP.style.color='#fa0'}
+  else{vP.textContent='0.0 kPa';vP.style.color='#666'}
+}
+
+/* ══════════ ANA DÖNGÜ ══════════ */
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=clock.getDelta();
+  if(!paused) animT+=dt*spd;
+  const t=animT%50;   // 45 sn animasyon + 5 sn bekleme
+
+  hud(t);
+
+  /* ── Modül B pozisyonu ── */
+  let tx;
+  if(t<8)         tx=16-(t/8)*9;                                       // 16→7
+  else if(t<15)   tx=7-((t-8)/7)*2.5;                                  // 7→4.5
+  else if(t<22){  const p=(t-15)/7; tx=4.5-(1-Math.pow(1-p,3))*2.45;}  // 4.5→2.05  (ease-out)
+  else if(t<28){  const p=(t-22)/6; tx=2.05-p*.04;}                    // 2.05→2.01 (EM çekme)
+  else if(t<33){  const p=(t-28)/5; tx=2.01-p*.01;}                    // 2.01→2.00 (kilit)
+  else            tx=2.0;                                               // kenetli
+  mB.position.x=tx;
+
+  /* ── Hafif salınım (yaklaşırken) ── */
+  if(t<18){
+    mB.rotation.y=Math.sin(t*.4)*.08;
+    mB.rotation.z=Math.cos(t*.5)*.04;
+  }else{
+    mB.rotation.y*=.96;
+    mB.rotation.z*=.96;
+  }
+
+  /* ── Port nabzı ── */
+  const pulse=.25+Math.sin(t*5)*.2;
+  mA.userData.glowM.opacity=pulse;
+  mB.userData.glowM.opacity=pulse;
+
+  /* ── LIDAR ── */
+  const lidarOn=t>=2&&t<22;
+  lidarGrp.visible=lidarOn;
+  if(lidarOn){
+    for(let i=0;i<beams.length;i++){
+      const a=(i/beams.length)*Math.PI*2+t*.6;
+      const r=.35;
+      const x1=mA.position.x+2, x2=mB.position.x-2;
+      const p=beams[i].geometry.attributes.position;
+      p.setXYZ(0, x1, Math.cos(a)*r, Math.sin(a)*r);
+      p.setXYZ(1, x2, Math.cos(a+.3)*r*.4, Math.sin(a+.3)*r*.4);
+      p.needsUpdate=true;
+      beams[i].material.opacity=.25+Math.sin(t*10+i)*.2;
+    }
+  }
+
+  /* ── EM Parçacıkları ── */
+  const emOn=t>=22&&t<34;
+  emMat.opacity=emOn?.7:Math.max(0,emMat.opacity-.03);
+  if(emOn){
+    const mx=(mA.position.x+mB.position.x)/2;
+    for(let i=0;i<emN;i++){
+      const a=(i/emN)*Math.PI*2;
+      const r=.55+Math.sin(t*3+i*.4)*.25;
+      emPos[i*3  ]=mx+Math.sin(t*4+i*.2)*.4;
+      emPos[i*3+1]=Math.cos(a+t*2.5)*r;
+      emPos[i*3+2]=Math.sin(a+t*2.5)*r;
+    }
+    emGeo.attributes.position.needsUpdate=true;
+  }
+
+  /* ── Bayonet Pinleri ── */
+  const mx=(mA.position.x+mB.position.x)/2;
+  if(t>=28&&t<36){
+    pinGrp.position.x=mx;
+    const pp=Math.min(1,(t-28)/3.5);
+    pins.forEach((pin,i)=>{
+      pin.visible=true;
+      const a0=(i/8)*Math.PI*2;
+      const ext=Math.min(1,pp*2);
+      pin.scale.x=ext;
+      let a=a0;
+      if(pp>.5) a=a0+(pp-.5)*2*(Math.PI/4);   // 45° bayonet dönüşü
+      const rr=.38;
+      pin.position.y=Math.cos(a)*rr;
+      pin.position.z=Math.sin(a)*rr;
+      pin.material.color.setHex(pp>.85?0x00ff88:0xcccccc);
+      pin.material.emissive=new THREE.Color(pp>.85?0x003311:0x000000);
+    });
+  }else if(t>=36){
+    pinGrp.position.x=mx;
+    pins.forEach(p=>{p.visible=true;p.material.color.setHex(0x00ff88)});
+  }else{
+    pins.forEach(p=>p.visible=false);
+  }
+
+  /* ── Seal Halkası ── */
+  seal.position.x=mx;
+  if(t>=33&&t<40){
+    seal.visible=true;
+    const sp=(t-33)/5;
+    sealMat.opacity=Math.min(.85,sp*1.2);
+    seal.scale.setScalar(1+Math.sin(t*4)*.04);
+    sealMat.color.setHex(sp>.65?0x00ff88:0xffaa00);
+  }else if(t>=40){
+    seal.visible=true;sealMat.opacity=.5;sealMat.color.setHex(0x00ff88);
+  }else{
+    seal.visible=false;
+  }
+
+  /* ── Tamamlanma Flash ── */
+  flash.position.x=mx;
+  if(t>=38&&t<40.5){
+    flash.visible=true;
+    const fp=(t-38)/2.5;
+    flashMat.opacity=fp<.25?fp/.25:Math.max(0,1-(fp-.25)/.75)*.8;
+    flash.scale.setScalar(1+fp*4);
+  }else flash.visible=false;
+
+  /* ── Modül parlaklık ── */
+  mA.userData.mat.emissiveIntensity=t>=38?.28:.12;
+  mB.userData.mat.emissiveIntensity=t>=38?.28:.12;
+
+  /* ── Kamera ── */
+  let camTarget;
+  if(t<5)        camTarget=new THREE.Vector3(12,5,15);
+  else if(t<15)  camTarget=new THREE.Vector3(9,3.5,11);
+  else if(t<22)  camTarget=new THREE.Vector3(4,1.5,5);
+  else if(t<35)  camTarget=new THREE.Vector3(2.5,1,3.5);
+  else           camTarget=new THREE.Vector3(7,3.5,9);
+  cam.position.lerp(camTarget,.018);
+
+  ctrl.target.lerp(new THREE.Vector3(mx,0,0),.04);
+  ctrl.update();
+  R.render(scene,cam);
+}
+
+/* ──────── KONTROL FONKSİYONLARI ──────── */
+window.restart=()=>{
+  animT=0;curPhase=-1;paused=false;
+  document.getElementById('btnPause').textContent='⏸ DURAKLAT';
+  document.querySelectorAll('.stp').forEach(el=>{
+    el.classList.remove('on','ok');
+    el.textContent=el.textContent.replace('●','○').replace('◉','○');
+  });
+};
+window.togglePause=()=>{
+  paused=!paused;
+  document.getElementById('btnPause').textContent=paused?'▶ DEVAM':'⏸ DURAKLAT';
+};
+window.changeSpeed=()=>{
+  spd=spd>=4?1:spd*2;
+  document.getElementById('btnSpd').textContent=spd>1?`⏩ ${spd}×`:'⏩ HIZ';
+};
+
+/* ──────── PENCERE BOYUTLANDIRMA ──────── */
+addEventListener('resize',()=>{
+  cam.aspect=innerWidth/innerHeight;
+  cam.updateProjectionMatrix();
+  R.setSize(innerWidth,innerHeight);
+});
+
+/* ──────── BAŞLAT ──────── */
+loop();
+</script>
+</body>
+</html>
