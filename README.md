@@ -1,4 +1,4 @@
-# TUA-Astrohackathon
+# TUA-Astro Hackathon Truncated Octahedron Space Station
 KeFaLX TUA Astrohackathon team's animations and Arduino® codes
 
 Sources:
